@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client"
   output   = "../app/generated/prisma"
@@ -8,4 +5,151 @@ generator client {
 
 datasource db {
   provider = "sqlite"
+}
+
+enum BillingType {
+  HOURLY
+  FIXED
+}
+
+enum FixedAllocation {
+  NONE
+  PROPORTIONAL_IN_RANGE
+}
+
+enum RoundingMode {
+  NEAREST
+  UP
+  DOWN
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+}
+
+model Client {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  defaultCurrency String
+  isArchived      Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  projects        Project[]
+}
+
+model Project {
+  id               String           @id @default(cuid())
+  clientId          String
+  name              String
+  currency          String
+  billingType       BillingType
+  hourlyRate        Decimal?
+  fixedAmount       Decimal?
+  fixedAllocation   FixedAllocation  @default(NONE)
+  roundToMinutes    Int?
+  roundingMode      RoundingMode?
+  isArchived        Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  client            Client           @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  timeEntries       TimeEntry[]
+  favorites         Favorite[]
+
+  @@index([clientId])
+  @@unique([clientId, name])
+}
+
+model TimeEntry {
+  id              String          @id @default(cuid())
+  projectId       String
+  description     String
+  startAt         DateTime
+  endAt           DateTime?
+  durationSec     Int
+  isRunning       Boolean         @default(false)
+  isBillable      Boolean         @default(true)
+  paymentStatus   PaymentStatus   @default(UNPAID)
+  paidAt          DateTime?
+  rateOverride    Decimal?
+  amountOverride  Decimal?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tags            TimeEntryTag[]
+
+  @@index([projectId, startAt])
+  @@index([paymentStatus])
+  @@index([isRunning])
+}
+
+model Tag {
+  id              String          @id @default(cuid())
+  name            String          @unique
+  color           String?
+
+  timeEntries     TimeEntryTag[]
+  favorites       FavoriteTag[]
+}
+
+model TimeEntryTag {
+  timeEntryId     String
+  tagId           String
+
+  timeEntry       TimeEntry        @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  tag             Tag              @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([timeEntryId, tagId])
+  @@index([tagId])
+}
+
+model Favorite {
+  id                  String       @id @default(cuid())
+  name                String
+  projectId           String
+  descriptionTemplate String
+  defaultBillable     Boolean      @default(true)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  project             Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tags                FavoriteTag[]
+
+  @@index([projectId])
+}
+
+model FavoriteTag {
+  favoriteId      String
+  tagId           String
+
+  favorite        Favorite         @relation(fields: [favoriteId], references: [id], onDelete: Cascade)
+  tag             Tag              @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([favoriteId, tagId])
+  @@index([tagId])
+}
+
+model Settings {
+  id              String          @id @default(cuid())
+  baseCurrency    String
+  displayCurrency String
+  moneyPrecision  Int
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model ExchangeRate {
+  id              String          @id @default(cuid())
+  baseCurrency    String
+  quoteCurrency   String
+  rate            Decimal
+  validFrom       DateTime
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([baseCurrency, quoteCurrency, validFrom])
+  @@index([baseCurrency, quoteCurrency])
 }
