@@ -12,16 +12,13 @@ const adapter = new PrismaBetterSqlite3({
 
 const prisma = new PrismaClient({ adapter });
 
+const SEED_PREFIX = "[seed]";
+
 function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 async function main() {
-  await prisma.favoriteTag.deleteMany();
-  await prisma.timeEntryTag.deleteMany();
-  await prisma.favorite.deleteMany();
-  await prisma.timeEntry.deleteMany();
-
   await prisma.settings.upsert({
     where: { id: "app-settings" },
     update: {
@@ -158,6 +155,19 @@ async function main() {
     ),
   );
 
+  await prisma.timeEntryTag.deleteMany({
+    where: {
+      timeEntry: {
+        description: { startsWith: SEED_PREFIX },
+      },
+    },
+  });
+  await prisma.timeEntry.deleteMany({
+    where: {
+      description: { startsWith: SEED_PREFIX },
+    },
+  });
+
   const projects = [maxHourly, maxFixed, olegCrm, olegInfra];
   const descriptions = [
     "Fix bug #12",
@@ -213,7 +223,7 @@ async function main() {
     const timeEntry = await prisma.timeEntry.create({
       data: {
         projectId: project.id,
-        description: descriptions[i % descriptions.length],
+        description: `${SEED_PREFIX} ${descriptions[i % descriptions.length]}`,
         startAt,
         endAt,
         durationSec: Math.floor((endAt.getTime() - startAt.getTime()) / 1000),
@@ -226,14 +236,13 @@ async function main() {
     const selectedTags = tagSets[i % tagSets.length];
 
     if (selectedTags.length > 0) {
-      for (const tagName of selectedTags) {
-        await prisma.timeEntryTag.create({
-          data: {
-            timeEntryId: timeEntry.id,
-            tagId: tags[tagName].id,
-          },
-        });
-      }
+      await prisma.timeEntryTag.createMany({
+        data: selectedTags.map((tagName) => ({
+          timeEntryId: timeEntry.id,
+          tagId: tags[tagName].id,
+        })),
+        skipDuplicates: true,
+      });
     }
   }
 
@@ -278,14 +287,13 @@ async function main() {
       },
     });
 
-    for (const tagName of favoriteData.tagNames) {
-      await prisma.favoriteTag.create({
-        data: {
-          favoriteId: favorite.id,
-          tagId: tags[tagName].id,
-        },
-      });
-    }
+    await prisma.favoriteTag.createMany({
+      data: favoriteData.tagNames.map((tagName) => ({
+        favoriteId: favorite.id,
+        tagId: tags[tagName].id,
+      })),
+      skipDuplicates: true,
+    });
   }
 }
 
